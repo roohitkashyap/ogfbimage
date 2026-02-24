@@ -212,9 +212,18 @@ function serveCrawlerPage($id, $link)
 {
     $title = htmlspecialchars($link['title'] ?? 'Untitled', ENT_QUOTES, 'UTF-8');
     $desc = htmlspecialchars($link['desc'] ?? '', ENT_QUOTES, 'UTF-8');
-    $siteName = htmlspecialchars($link['site_name'] ?? SITE_TITLE, ENT_QUOTES, 'UTF-8');
+    $targetUrl = $link['url'] ?? '';
+
+    // Use target domain as site_name if not set
+    $siteName = $link['site_name'] ?? '';
+    if (empty($siteName) && !empty($targetUrl)) {
+        $siteName = parse_url($targetUrl, PHP_URL_HOST) ?? '';
+    }
+    $siteName = htmlspecialchars($siteName ?: SITE_TITLE, ENT_QUOTES, 'UTF-8');
+
     $imgUrl = getBaseUrl() . '?img=' . $id;
-    $pageUrl = getBaseUrl() . '?id=' . $id;
+    // Show target URL in FB preview instead of system URL
+    $pageUrl = htmlspecialchars($targetUrl ?: (getBaseUrl() . '?id=' . $id), ENT_QUOTES, 'UTF-8');
 
     // Get actual image dimensions
     $imgFile = IMAGE_DIR . '/' . $id . '.jpg';

@@ -1,0 +1,80 @@
+RewriteEngine On
+
+# ============================================================
+# ALLOW SOCIAL MEDIA CRAWLERS (Must be FIRST — before any blocks)
+# ============================================================
+# Set env var for known crawlers so they bypass security
+SetEnvIfNoCase User-Agent "facebookexternalhit" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "Facebot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "FacebookBot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "Twitterbot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "LinkedInBot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "WhatsApp" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "TelegramBot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "Discordbot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "Googlebot" SOCIAL_BOT
+SetEnvIfNoCase User-Agent "MetaInspector" SOCIAL_BOT
+
+# Allow social bots access
+<IfModule mod_authz_core.c>
+    <If "env('SOCIAL_BOT') == '1'">
+        Require all granted
+    </If>
+</IfModule>
+
+Order Allow,Deny
+Allow from all
+
+# ============================================================
+# Force HTTPS (uncomment on live server)
+# ============================================================
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ============================================================
+# Clean URLs
+# ============================================================
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-fA-F0-9]{8})$ go.php?id=$1 [L,QSA]
+
+RewriteRule ^img/([a-fA-F0-9]{8})$ go.php?img=$1 [L,QSA]
+
+# ============================================================
+# Security (but allow crawlers)
+# ============================================================
+# Block direct access to data directory
+RewriteRule ^fb_data/ - [F,L]
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Disable directory listing
+Options -Indexes
+
+# Block access to sensitive files (but not images!)
+<FilesMatch "\.(json|log)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json
+</IfModule>
+
+# Image caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 7 days"
+</IfModule>

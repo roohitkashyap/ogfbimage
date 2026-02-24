@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["php82", "php82Extensions.gd", "php82Extensions.curl"]
+
+[phases.build]
+cmds = ["mkdir -p fb_data fb_images"]
+
+[start]
+cmd = "php -S 0.0.0.0:${PORT:-8080} -t ."

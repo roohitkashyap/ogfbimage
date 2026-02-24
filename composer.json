@@ -1,0 +1,8 @@
+{
+    "require": {
+        "php": ">=8.0",
+        "ext-gd": "*",
+        "ext-curl": "*",
+        "ext-json": "*"
+    }
+}

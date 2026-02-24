@@ -216,6 +216,18 @@ function serveCrawlerPage($id, $link)
     $imgUrl = getBaseUrl() . '?img=' . $id;
     $pageUrl = getBaseUrl() . '?id=' . $id;
 
+    // Get actual image dimensions
+    $imgFile = IMAGE_DIR . '/' . $id . '.jpg';
+    $imgW = 1200;
+    $imgH = 630; // defaults
+    if (file_exists($imgFile)) {
+        $dims = @getimagesize($imgFile);
+        if ($dims) {
+            $imgW = $dims[0];
+            $imgH = $dims[1];
+        }
+    }
+
     // Explicit headers to bypass Hostinger WAF
     http_response_code(200);
     header('Content-Type: text/html; charset=UTF-8');
@@ -237,8 +249,8 @@ function serveCrawlerPage($id, $link)
     <meta property="og:description" content="{$desc}" />
     <meta property="og:image" content="{$imgUrl}" />
     <meta property="og:image:type" content="image/jpeg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:width" content="{$imgW}" />
+    <meta property="og:image:height" content="{$imgH}" />
     <meta property="og:site_name" content="{$siteName}" />
     
     <!-- Twitter Card -->

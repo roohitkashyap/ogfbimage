@@ -516,35 +516,23 @@ function convertAndSave($tmpFile, $imageType, $id)
     $origW = imagesx($src);
     $origH = imagesy($src);
 
-    // Target: 1200x630 (FB recommended 1.91:1 ratio)
-    $targetW = 1200;
-    $targetH = 630;
-    $targetRatio = $targetW / $targetH; // 1.91
-
-    // Calculate crop area (center crop to target ratio)
-    $origRatio = $origW / $origH;
-
-    if ($origRatio > $targetRatio) {
-        // Image is wider than target — crop sides
-        $cropH = $origH;
-        $cropW = (int) round($origH * $targetRatio);
-        $cropX = (int) round(($origW - $cropW) / 2);
-        $cropY = 0;
+    // Resize to max 1200px width, keep original aspect ratio
+    $maxW = 1200;
+    if ($origW > $maxW) {
+        $newW = $maxW;
+        $newH = (int) round($origH * ($maxW / $origW));
     } else {
-        // Image is taller (or square) — crop top/bottom
-        $cropW = $origW;
-        $cropH = (int) round($origW / $targetRatio);
-        $cropX = 0;
-        $cropY = (int) round(($origH - $cropH) / 2);
+        $newW = $origW;
+        $newH = $origH;
     }
 
-    // Create 1200x630 output with white background
-    $dst = imagecreatetruecolor($targetW, $targetH);
+    // Create new image with white background (handles transparency)
+    $dst = imagecreatetruecolor($newW, $newH);
     $white = imagecolorallocate($dst, 255, 255, 255);
     imagefill($dst, 0, 0, $white);
 
-    // Center-crop and resize to exactly 1200x630
-    imagecopyresampled($dst, $src, 0, 0, $cropX, $cropY, $targetW, $targetH, $cropW, $cropH);
+    // Resize — no crop, original ratio maintained
+    imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
 
     // Save as JPG (quality 90)
     $result = imagejpeg($dst, IMAGE_DIR . '/' . $id . '.jpg', 90);

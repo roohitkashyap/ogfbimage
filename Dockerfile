@@ -1,6 +1,6 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
-# Install GD dependencies and enable extensions
+# Install GD dependencies
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg62-turbo-dev \
@@ -8,32 +8,25 @@ RUN apt-get update && apt-get install -y \
     libwebp-dev \
     libcurl4-openssl-dev \
     && docker-php-ext-configure gd \
-        --with-freetype \
-        --with-jpeg \
-        --with-webp \
+    --with-freetype \
+    --with-jpeg \
+    --with-webp \
     && docker-php-ext-install -j$(nproc) gd curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
+WORKDIR /app
+COPY . /app/
 
-# Set Apache to allow .htaccess
-RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
+# Create data directories
+RUN mkdir -p /app/fb_data /app/fb_images && \
+    chmod 777 /app/fb_data /app/fb_images
 
 # PHP production settings
-RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" && \
-    echo "upload_max_filesize = 6M" >> "$PHP_INI_DIR/php.ini" && \
-    echo "post_max_size = 8M" >> "$PHP_INI_DIR/php.ini" && \
-    echo "display_errors = Off" >> "$PHP_INI_DIR/php.ini"
+RUN echo "upload_max_filesize = 6M" >> /usr/local/etc/php/php.ini && \
+    echo "post_max_size = 8M" >> /usr/local/etc/php/php.ini && \
+    echo "display_errors = Off" >> /usr/local/etc/php/php.ini
 
-# Copy project files
-COPY . /var/www/html/
+EXPOSE ${PORT:-8080}
 
-# Create data directories with proper permissions
-RUN mkdir -p /var/www/html/fb_data /var/www/html/fb_images && \
-    chown -R www-data:www-data /var/www/html/ && \
-    chmod -R 755 /var/www/html/ && \
-    chmod 777 /var/www/html/fb_data /var/www/html/fb_images
-
-EXPOSE 80
+CMD php -S 0.0.0.0:${PORT:-8080} -t /app

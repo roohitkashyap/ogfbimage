@@ -115,6 +115,8 @@ if (isset($_GET['api'])) {
         apiList();
     } elseif ($action === 'fetch-og' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         apiFetchOG();
+    } elseif ($action === 'update-image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        apiUpdateImage();
     } else {
         jsonResponse(['error' => 'Invalid API action'], 400);
     }
@@ -491,9 +493,74 @@ function apiList()
     $links = loadLinks();
     // Sort by created date (newest first)
     uasort($links, function ($a, $b) {
-        return strtotime($b['created'] ?? '0') - strtotime($a['created'] ?? '0');
+        return ($b['updated'] ?? 0) - ($a['updated'] ?? 0);
     });
     jsonResponse(['success' => true, 'links' => array_values($links), 'total' => count($links)]);
+}
+
+function apiUpdateImage()
+{
+    header('Content-Type: application/json; charset=UTF-8');
+
+    $id = sanitizeId($_POST['id'] ?? '');
+    if (empty($id)) {
+        jsonResponse(['error' => 'Link ID is required'], 400);
+        return;
+    }
+
+    // Check link exists
+    $links = loadLinks();
+    if (!isset($links[$id])) {
+        jsonResponse(['error' => 'Link not found'], 404);
+        return;
+    }
+
+    // Validate image
+    if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+        jsonResponse(['error' => 'Image upload is required'], 400);
+        return;
+    }
+
+    $file = $_FILES['image'];
+    if ($file['size'] > MAX_IMAGE_SIZE) {
+        jsonResponse(['error' => 'Image must be under 5MB'], 400);
+        return;
+    }
+
+    $imageInfo = @getimagesize($file['tmp_name']);
+    if (!$imageInfo) {
+        jsonResponse(['error' => 'Invalid image file'], 400);
+        return;
+    }
+
+    $allowedTypes = [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP];
+    if (!in_array($imageInfo[2], $allowedTypes)) {
+        jsonResponse(['error' => 'Supported formats: JPG, PNG, GIF, WebP'], 400);
+        return;
+    }
+
+    // Delete old image
+    $oldImg = IMAGE_DIR . '/' . $id . '.jpg';
+    if (file_exists($oldImg)) {
+        @unlink($oldImg);
+    }
+
+    // Convert & save new image
+    if (!convertAndSave($file['tmp_name'], $imageInfo[2], $id)) {
+        jsonResponse(['error' => 'Image processing failed'], 500);
+        return;
+    }
+
+    // Update timestamp
+    $links[$id]['updated'] = time();
+    saveLinks($links);
+
+    jsonResponse([
+        'success' => true,
+        'id' => $id,
+        'img_url' => getBaseUrl() . '?img=' . $id . '&t=' . time(),
+        'message' => 'Image updated successfully',
+    ]);
 }
 
 function apiFetchOG()
@@ -1629,6 +1696,7 @@ function showAdminPanel($loginError = null)
                         <button class="btn btn-ghost btn-sm" onclick="copyToClipboard('${goUrl}')" title="Copy link">📋</button>
                         <a href="${goUrl}" target="_blank" class="btn btn-ghost btn-sm" title="Test link">🔗</a>
                         <a href="https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(goUrl)}" target="_blank" class="btn btn-ghost btn-sm" title="FB Debugger">🐛</a>
+                        <button class="btn btn-ghost btn-sm" onclick="openEditImage('${link.id}')" title="Change Image">🖼️</button>
                         <button class="btn btn-danger btn-sm" onclick="deleteLink('${link.id}')" title="Delete">🗑</button>
                     </div>
                 </td>
@@ -1770,6 +1838,72 @@ function showAdminPanel($loginError = null)
                     });
                 }
 
+                // ===== EDIT IMAGE =====
+                let editImageId = null;
+
+                function openEditImage(id) {
+                    editImageId = id;
+                    document.getElementById('editImageModal').style.display = 'flex';
+                    document.getElementById('editImagePreview').style.display = 'none';
+                    document.getElementById('editImageFile').value = '';
+                }
+
+                function closeEditImage() {
+                    document.getElementById('editImageModal').style.display = 'none';
+                    editImageId = null;
+                }
+
+                function previewEditImage(input) {
+                    if (input.files && input.files[0]) {
+                        const reader = new FileReader();
+                        reader.onload = function (e) {
+                            const preview = document.getElementById('editImagePreview');
+                            preview.src = e.target.result;
+                            preview.style.display = 'block';
+                        };
+                        reader.readAsDataURL(input.files[0]);
+                    }
+                }
+
+                async function submitEditImage() {
+                    if (!editImageId) return;
+                    const fileInput = document.getElementById('editImageFile');
+                    if (!fileInput.files || !fileInput.files[0]) {
+                        showToast('Please select an image', 'error');
+                        return;
+                    }
+
+                    showLoading(true);
+                    try {
+                        const formData = new FormData();
+                        formData.append('id', editImageId);
+                        formData.append('image', fileInput.files[0]);
+
+                        const res = await fetch(BASE_URL + '?api=update-image', {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        const data = await res.json();
+
+                        if (data.success) {
+                            showToast('Image updated!', 'success');
+                            closeEditImage();
+                            loadLinks();
+                        } else {
+                            showToast(data.error || 'Update failed', 'error');
+                        }
+                    } catch (e) {
+                        showToast('Network error', 'error');
+                    } finally {
+                        showLoading(false);
+                    }
+                }
+
+                // Close modal on outside click
+                document.getElementById('editImageModal')?.addEventListener('click', function (e) {
+                    if (e.target === this) closeEditImage();
+                });
+
                 // ===== DELETE LINK =====
                 async function deleteLink(id) {
                     if (!confirm('Delete this link? This cannot be undone.')) return;
@@ -1849,6 +1983,21 @@ function showAdminPanel($loginError = null)
                     return div.innerHTML;
                 }
             </script>
+
+        <!-- Edit Image Modal -->
+        <div id="editImageModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:#1a1a2e; border-radius:16px; padding:30px; max-width:450px; width:90%; border:1px solid rgba(255,255,255,0.1); box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+                <h3 style="color:#fff; margin:0 0 20px; font-size:18px;">🖼️ Change Image</h3>
+                <div style="margin-bottom:15px;">
+                    <input type="file" id="editImageFile" accept="image/jpeg,image/png,image/gif,image/webp" onchange="previewEditImage(this)" style="width:100%; padding:10px; background:#0f0f1a; border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#fff; cursor:pointer;">
+                </div>
+                <img id="editImagePreview" style="display:none; max-width:100%; max-height:200px; border-radius:8px; margin-bottom:15px; object-fit:contain; border:1px solid rgba(255,255,255,0.1);">
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button onclick="closeEditImage()" style="padding:10px 20px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px;">Cancel</button>
+                    <button onclick="submitEditImage()" style="padding:10px 20px; background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Upload Image</button>
+                </div>
+            </div>
+        </div>
 
         <?php endif; ?>
     </body>
